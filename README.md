@@ -9,7 +9,7 @@ It does not depend on your local computer or the Codex desktop app being open.
 - Sends two non-duplicated emails in sequence: the main recipient list, then the Xu Xu list.
 - Searches Nature Portfolio for recent computational/statistical articles.
 - Avoids articles already recorded in `sent_articles.json`.
-- Uses the OpenAI Responses API with web search to generate the Chinese HTML email.
+- Uses the Gemini API to generate the Chinese HTML email.
 - Sends the email through Gmail SMTP.
 - Commits the newly sent article record back to `sent_articles.json`.
 
@@ -19,7 +19,7 @@ Open the GitHub repository, then go to `Settings -> Secrets and variables -> Act
 
 Create these repository secrets:
 
-- `OPENAI_API_KEY`: your OpenAI API key.
+- `GEMINI_API_KEY`: your Gemini API key.
 - `SMTP_USERNAME`: your Gmail address, for example `tommy020929@gmail.com`.
 - `SMTP_PASSWORD`: your Gmail app password, not your normal Gmail password.
 - `EMAIL_CC`: comma-separated CC recipients.
@@ -35,8 +35,8 @@ In `Settings -> Secrets and variables -> Actions -> Variables`, you can set:
 - `EMAIL_TO`: direct recipient email. Defaults to `SMTP_USERNAME`.
 - `EMAIL_FROM`: sender email. Defaults to `SMTP_USERNAME`.
 - `XU_XU_EMAIL`: optional override for the Xu Xu recipient. Defaults to `xu.xu02@xjtlu.edu.cn`.
-- `OPENAI_MODEL`: defaults to `gpt-5`.
-- `OPENAI_REASONING_EFFORT`: defaults to `medium`.
+- `GEMINI_MODEL`: defaults to `gemini-2.5-flash`.
+- `GEMINI_MAX_OUTPUT_TOKENS`: defaults to `12000`.
 - `SMTP_HOST`: defaults to `smtp.gmail.com`.
 - `SMTP_PORT`: defaults to `587`.
 
@@ -58,7 +58,7 @@ then click `Run workflow`.
 ## Local Dry Run
 
 ```powershell
-$env:OPENAI_API_KEY="your_openai_key"
+$env:GEMINI_API_KEY="your_gemini_key"
 pip install -r requirements.txt
 python scripts/nature_daily_email.py --dry-run
 ```
