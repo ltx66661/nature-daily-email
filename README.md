@@ -5,7 +5,7 @@ It does not depend on your local computer or the Codex desktop app being open.
 
 ## What It Does
 
-- Runs every day at 08:00 Beijing time.
+- Runs every weekday at 10:00 Beijing time.
 - Searches Nature Portfolio for one recent computational/statistical article.
 - Avoids articles already recorded in `sent_articles.json`.
 - Uses the OpenAI Responses API with web search to generate the Chinese HTML email.
@@ -21,6 +21,8 @@ Create these repository secrets:
 - `OPENAI_API_KEY`: your OpenAI API key.
 - `SMTP_USERNAME`: your Gmail address, for example `tommy020929@gmail.com`.
 - `SMTP_PASSWORD`: your Gmail app password, not your normal Gmail password.
+- `EMAIL_CC`: comma-separated CC recipients.
+- `EMAIL_BCC`: comma-separated BCC recipients.
 
 For Gmail, enable 2-step verification and create an App Password:
 `Google Account -> Security -> 2-Step Verification -> App passwords`.
@@ -29,7 +31,7 @@ For Gmail, enable 2-step verification and create an App Password:
 
 In `Settings -> Secrets and variables -> Actions -> Variables`, you can set:
 
-- `EMAIL_TO`: recipient email. Defaults to `SMTP_USERNAME`.
+- `EMAIL_TO`: direct recipient email. Defaults to `SMTP_USERNAME`.
 - `EMAIL_FROM`: sender email. Defaults to `SMTP_USERNAME`.
 - `OPENAI_MODEL`: defaults to `gpt-5`.
 - `OPENAI_REASONING_EFFORT`: defaults to `medium`.
@@ -41,10 +43,10 @@ In `Settings -> Secrets and variables -> Actions -> Variables`, you can set:
 GitHub Actions cron uses UTC. The workflow uses:
 
 ```yaml
-cron: "0 0 * * *"
+cron: "0 2 * * 1-5"
 ```
 
-That is 00:00 UTC, which is 08:00 in Asia/Shanghai.
+That is 02:00 UTC Monday-Friday, which is 10:00 Monday-Friday in Asia/Shanghai.
 
 ## Manual Run
 
