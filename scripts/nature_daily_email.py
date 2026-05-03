@@ -1,4 +1,5 @@
 import argparse
+import html
 import json
 import os
 import re
@@ -7,9 +8,12 @@ import ssl
 from datetime import datetime
 from email.mime.text import MIMEText
 from pathlib import Path
+from urllib.request import Request, urlopen
+from xml.etree import ElementTree
 from zoneinfo import ZoneInfo
 
-from openai import OpenAI
+from google import genai
+from google.genai import types
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +32,19 @@ JOURNALS = [
     "Nature Machine Intelligence",
     "Nature Computational Science",
     "Nature Sensors",
+]
+
+FEEDS = [
+    "https://www.nature.com/nature.rss",
+    "https://www.nature.com/nenergy.rss",
+    "https://www.nature.com/natsustain.rss",
+    "https://www.nature.com/nclimate.rss",
+    "https://www.nature.com/ncomms.rss",
+    "https://www.nature.com/natfood.rss",
+    "https://www.nature.com/natcities.rss",
+    "https://www.nature.com/natwater.rss",
+    "https://www.nature.com/natmachintell.rss",
+    "https://www.nature.com/natcomputsci.rss",
 ]
 
 
@@ -66,6 +83,89 @@ def parse_recipients(value):
     return [item.strip() for item in re.split(r"[,;]", value or "") if item.strip()]
 
 
+def fetch_url(url):
+    request = Request(url, headers={"User-Agent": "nature-daily-email/1.0"})
+    with urlopen(request, timeout=25) as response:
+        return response.read().decode("utf-8", errors="replace")
+
+
+def strip_html(value):
+    value = re.sub(r"<[^>]+>", " ", value or "")
+    return html.unescape(re.sub(r"\s+", " ", value)).strip()
+
+
+def fetch_rss_candidates(limit=40):
+    candidates = []
+    seen_urls = set()
+    for feed_url in FEEDS:
+        try:
+            root = ElementTree.fromstring(fetch_url(feed_url))
+        except Exception as exc:
+            print(f"Warning: failed to fetch RSS feed {feed_url}: {exc}")
+            continue
+        for item in root.findall(".//item"):
+            title = strip_html(item.findtext("title"))
+            url = (item.findtext("link") or "").strip()
+            if not title or not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            candidates.append(
+                {
+                    "title": title,
+                    "url": url,
+                    "published": strip_html(item.findtext("pubDate")),
+                    "summary": strip_html(item.findtext("description")),
+                    "source_feed": feed_url,
+                }
+            )
+            if len(candidates) >= limit:
+                return candidates
+    return candidates
+
+
+def extract_article_metadata(url):
+    metadata = {"url": url, "authors": [], "figures": []}
+    try:
+        page = fetch_url(url)
+    except Exception as exc:
+        metadata["fetch_error"] = str(exc)
+        return metadata
+
+    for name in [
+        "citation_title",
+        "citation_journal_title",
+        "citation_publication_date",
+        "citation_article_type",
+        "citation_doi",
+        "description",
+    ]:
+        match = re.search(
+            rf'<meta[^>]+name=["\']{re.escape(name)}["\'][^>]+content=["\']([^"\']+)["\']',
+            page,
+            flags=re.IGNORECASE,
+        )
+        if match:
+            metadata[name] = html.unescape(match.group(1)).strip()
+
+    metadata["authors"] = [
+        html.unescape(match).strip()
+        for match in re.findall(
+            r'<meta[^>]+name=["\']citation_author["\'][^>]+content=["\']([^"\']+)["\']',
+            page,
+            flags=re.IGNORECASE,
+        )
+    ][:20]
+
+    figure_urls = []
+    for match in re.findall(r'href=["\']([^"\']*/figures/\d+)["\']', page):
+        figure_url = match if match.startswith("http") else f"https://www.nature.com{match}"
+        if figure_url not in figure_urls:
+            figure_urls.append(figure_url)
+    metadata["figures"] = figure_urls[:6]
+    metadata["plain_text_excerpt"] = strip_html(page)[:6000]
+    return metadata
+
+
 def extract_json(text):
     text = text.strip()
     if text.startswith("```"):
@@ -81,9 +181,11 @@ def extract_json(text):
         return json.loads(text[start : end + 1])
 
 
-def build_prompt(sent_items, date_string):
+def build_prompt(sent_items, date_string, candidates, selected_metadata):
     sent_summary = json.dumps(sent_items, ensure_ascii=False, indent=2)
     journals = "、".join(JOURNALS)
+    candidate_summary = json.dumps(candidates, ensure_ascii=False, indent=2)
+    metadata_summary = json.dumps(selected_metadata, ensure_ascii=False, indent=2)
     return f"""
 你是一个严格的 Nature Portfolio 每日论文筛选和中文邮件写作代理。
 
@@ -97,6 +199,12 @@ def build_prompt(sent_items, date_string):
 5. 必须用 Nature 官方文章页、DOI、论文页面、作者机构主页、ORCID、GitHub/Zenodo 等可核验来源。
 6. 不要重复以下已经发送过的 DOI、URL 或标题：
 {sent_summary}
+
+候选文章来自 Nature RSS，已按最近条目抓取：
+{candidate_summary}
+
+如果 selected_article_metadata 非空，优先使用里面的 DOI、作者、期刊、日期、Figure 链接和网页摘录：
+{metadata_summary}
 
 输出必须是一个 JSON object，不要使用 Markdown 代码块，不要输出 JSON 之外的任何文字。字段如下：
 {{
@@ -125,31 +233,33 @@ html 正文必须为中文，适合 Gmail 直接阅读，必须包含这些小�
 """
 
 
+def select_candidate(sent_items, candidates):
+    for candidate in candidates:
+        if not already_sent(candidate, sent_items):
+            return candidate
+    return None
+
+
 def generate_email(sent_items, date_string):
-    client = OpenAI()
-    model = os.getenv("OPENAI_MODEL", "gpt-5")
-    effort = os.getenv("OPENAI_REASONING_EFFORT", "medium")
-    response = client.responses.create(
+    candidates = fetch_rss_candidates()
+    selected = select_candidate(sent_items, candidates)
+    if not selected:
+        raise RuntimeError("No non-duplicate Nature RSS candidates were found.")
+    selected_metadata = extract_article_metadata(selected["url"])
+
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    max_tokens = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "12000"))
+    response = client.models.generate_content(
         model=model,
-        reasoning={"effort": effort},
-        tools=[
-            {
-                "type": "web_search",
-                "filters": {
-                    "allowed_domains": [
-                        "www.nature.com",
-                        "nature.com",
-                        "doi.org",
-                        "orcid.org",
-                        "github.com",
-                        "zenodo.org",
-                    ]
-                },
-            }
-        ],
-        input=build_prompt(sent_items, date_string),
+        contents=build_prompt(sent_items, date_string, candidates, selected_metadata),
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            max_output_tokens=max_tokens,
+            temperature=0.2,
+        ),
     )
-    data = extract_json(response.output_text)
+    data = extract_json(response.text)
     required = ["title", "doi", "url", "subject", "html"]
     missing = [key for key in required if not data.get(key)]
     if missing:
