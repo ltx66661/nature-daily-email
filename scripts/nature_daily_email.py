@@ -62,6 +62,10 @@ def already_sent(candidate, sent_items):
     return False
 
 
+def parse_recipients(value):
+    return [item.strip() for item in re.split(r"[,;]", value or "") if item.strip()]
+
+
 def extract_json(text):
     text = text.strip()
     if text.startswith("```"):
@@ -159,18 +163,26 @@ def send_email(subject, html):
     host = os.getenv("SMTP_HOST", "smtp.gmail.com")
     port = int(os.getenv("SMTP_PORT", "587"))
     sender = os.getenv("EMAIL_FROM", username)
-    recipient = os.getenv("EMAIL_TO", username)
+    to_recipients = parse_recipients(os.getenv("EMAIL_TO", username))
+    cc_recipients = parse_recipients(os.getenv("EMAIL_CC", ""))
+    bcc_recipients = parse_recipients(os.getenv("EMAIL_BCC", ""))
+    all_recipients = to_recipients + cc_recipients + bcc_recipients
+    if not all_recipients:
+        raise ValueError("At least one recipient is required in EMAIL_TO, EMAIL_CC, or EMAIL_BCC")
 
     msg = MIMEText(html, "html", "utf-8")
     msg["Subject"] = subject
     msg["From"] = sender
-    msg["To"] = recipient
+    if to_recipients:
+        msg["To"] = ", ".join(to_recipients)
+    if cc_recipients:
+        msg["Cc"] = ", ".join(cc_recipients)
 
     context = ssl.create_default_context()
     with smtplib.SMTP(host, port) as server:
         server.starttls(context=context)
         server.login(username, password)
-        server.sendmail(sender, [recipient], msg.as_string())
+        server.sendmail(sender, all_recipients, msg.as_string())
 
 
 def main():
