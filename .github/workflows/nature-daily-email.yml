@@ -2,8 +2,8 @@ name: Nature daily email
 
 on:
   schedule:
-    # 08:00 Asia/Shanghai == 00:00 UTC
-    - cron: "0 0 * * *"
+    # Weekdays 10:00 Asia/Shanghai == weekdays 02:00 UTC
+    - cron: "0 2 * * 1-5"
   workflow_dispatch:
 
 permissions:
@@ -37,6 +37,8 @@ jobs:
           SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
           EMAIL_FROM: ${{ vars.EMAIL_FROM || secrets.SMTP_USERNAME }}
           EMAIL_TO: ${{ vars.EMAIL_TO || secrets.SMTP_USERNAME }}
+          EMAIL_CC: ${{ secrets.EMAIL_CC }}
+          EMAIL_BCC: ${{ secrets.EMAIL_BCC }}
         run: python scripts/nature_daily_email.py
 
       - name: Commit sent-article record
