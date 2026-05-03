@@ -6,7 +6,8 @@ It does not depend on your local computer or the Codex desktop app being open.
 ## What It Does
 
 - Runs every weekday at 10:00 Beijing time.
-- Searches Nature Portfolio for one recent computational/statistical article.
+- Sends two non-duplicated emails in sequence: the main recipient list, then the Xu Xu list.
+- Searches Nature Portfolio for recent computational/statistical articles.
 - Avoids articles already recorded in `sent_articles.json`.
 - Uses the OpenAI Responses API with web search to generate the Chinese HTML email.
 - Sends the email through Gmail SMTP.
@@ -33,6 +34,7 @@ In `Settings -> Secrets and variables -> Actions -> Variables`, you can set:
 
 - `EMAIL_TO`: direct recipient email. Defaults to `SMTP_USERNAME`.
 - `EMAIL_FROM`: sender email. Defaults to `SMTP_USERNAME`.
+- `XU_XU_EMAIL`: optional override for the Xu Xu recipient. Defaults to `xu.xu02@xjtlu.edu.cn`.
 - `OPENAI_MODEL`: defaults to `gpt-5`.
 - `OPENAI_REASONING_EFFORT`: defaults to `medium`.
 - `SMTP_HOST`: defaults to `smtp.gmail.com`.
@@ -67,6 +69,9 @@ Dry run prints the generated JSON and does not send email or update
 ## Notes
 
 - Do not commit real API keys or Gmail passwords.
+- Both email scripts share `sent_articles.json`, so the second script sees the
+  first script's article before choosing its own. If either script cannot find a
+  non-duplicate article, it fails instead of sending a duplicate.
 - If the job sends an email but the final commit step fails, update
   `sent_articles.json` manually or rerun after fixing repository permissions.
 - The workflow needs `contents: write` permission so it can commit the updated
