@@ -1,9 +1,7 @@
 name: Nature daily email
 
 on:
-  schedule:
-    # Weekdays 10:00 Asia/Shanghai == weekdays 02:00 UTC
-    - cron: "0 2 * * 1-5"
+  # Scheduled cloud sending is disabled. Use workflow_dispatch only for manual tests.
   workflow_dispatch:
 
 permissions:
